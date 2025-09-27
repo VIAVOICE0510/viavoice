@@ -1,35 +1,92 @@
 import React, { useRef, useEffect, useState } from 'react';
-// import {voiceDB} from '../data/voiceDB'
-// دیتابیس فرضی
-const voiceDB = [
-  { id: 1, text: "How are you?" },
-  { id: 2, text: "I am learning React" },
-  { id: 3, text: "This is a test sentence" },
-  { id: 4, text: "Please repeat after me" },
-  { id: 5, text: "Open the door" },
-  { id: 6, text: "Close the window" },
-  { id: 7, text: "I like pizza" },
-  { id: 8, text: "Today is sunny" },
-  { id: 9, text: "I am going to school" },
-  { id: 10, text: "Goodbye and see you soon" }
-];
-const rahnama =[
-  {id:1,text:"جملۀ اول رو بگو"},
-  {id:2,text:"حالا وقت دومیه"},
-  {id:2,text:"سوم سوم سوم"},
-]
-
 export default function RightPanel() {
+const [trend, setTrend] = useState(null);
+const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
+const [youText, setYouText] = useState("");
+const [isSpeaking, setIsSpeaking] = useState(false);
+const [isRunning, setIsRunning] = useState(false); // آیا روند در حال اجرا است
+const audioRef = useRef(null);
+
+
+useEffect(() => {
+  fetch("https://totivar.com/api/trends/13")
+    .then(res => res.json())
+    .then(data => {
+      console.log(data)      
+      setTrend(data);
+      if (data.sentences && data.sentences.length > 0) {
+        setCurrentSentenceIndex(0);
+        setYouText(data.sentences[0]);
+      }
+    })
+    .catch(err => console.error("خطا در گرفتن روند:", err));
+}, []);
+
+const handleStartLearning = async () => {
+  if (!trend || isRunning) return;
+  setIsRunning(true);
+
+  const guides = trend.guides || [];
+  const sentences = trend.sentences || [];
+
+  for (let i = 0; i < sentences.length; i++) {
+    // 1) انتخاب راهنما
+    let guideUrl = "";
+    if (i === 0 && guides.length >= 1) {
+      guideUrl = guides[0]; // راهنمای اول فقط قبل از جمله اول
+    } else if (guides.length >= 2) {
+      guideUrl = guides[1]; // راهنمای دوم قبل از بقیه جملات
+    }
+
+    if (guideUrl) {
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+      audioRef.current = new Audio(`https://totivar.com/${guideUrl}`);
+      setIsSpeaking(true);
+
+      await new Promise(resolve => {
+        audioRef.current.onended = () => { setIsSpeaking(false); resolve(); };
+        audioRef.current.play().catch(() => resolve());
+      });
+    }
+
+    // 2) نمایش و خواندن جمله
+    const sentence = sentences[i];
+    setCurrentSentenceIndex(i);
+    setYouText(sentence);
+
+    const sentenceAudio = trend.sentencesAudio?.[i] || null;
+    if (sentenceAudio) {
+      await new Promise(resolve => {
+        audioRef.current = new Audio(`https://totivar.com/${sentenceAudio}`);
+        setIsSpeaking(true);
+        audioRef.current.onended = () => { setIsSpeaking(false); resolve(); };
+        audioRef.current.play().catch(() => resolve());
+      });
+    } else if ("speechSynthesis" in window) {
+      await new Promise(resolve => {
+        const utter = new SpeechSynthesisUtterance(sentence);
+        setIsSpeaking(true);
+        utter.onend = () => { setIsSpeaking(false); resolve(); };
+        window.speechSynthesis.speak(utter);
+      });
+    }
+
+    // 3) 5 ثانیه صبر
+    await new Promise(r => setTimeout(r, 5000));
+  }
+
+  setTrend(prev => ({ ...prev, completed: true }));
+  setIsRunning(false);
+};
+
+
+
+
   const [pageName , setPageName]=useState("moror");
   const timelineRef = useRef(null);
   const lineRightRef = useRef(null);
   const currentTimeRef = useRef(null);
   // استیت‌ها
-  const [weText, setWeText] = useState(rahnama[0].text);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const audioRef = useRef(null);
-  const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
-  const [youText, setYouText] = useState(voiceDB[0].text);
   const [isRecording, setIsRecording] = useState(false);
   const [recordedText, setRecordedText] = useState("");        // جمله‌ای که کاربر ضبط کرده
   const [comparisonResult, setComparisonResult] = useState([]); // نتیجه مقایسه کلمه به کلمه
@@ -49,12 +106,6 @@ export default function RightPanel() {
     timelineEventsRef.current = timelineEvents;
   }, [timelineEvents]);
 
-  // دکمه بعدی
-  const handleNextSentence = () => {
-    const nextIndex = (currentSentenceIndex + 1) % voiceDB.length;
-    setCurrentSentenceIndex(nextIndex);
-    setYouText(voiceDB[nextIndex].text);
-  };
   // تابع پخش ویس
   const handlePlayVoice = () => {
     if (!audioRef.current) {
@@ -542,45 +593,60 @@ function centerOnNow() {
   return (
     <div className="col-xs-12 col-sm-12 col-md-3" id="parent">
       <div id="btnschild">  
-      <p className='text-white text-center'>{pageName=="moror" ? "مرور" : ""}</p>
-        <button className="btn text-white me-2 mt-2" 
-        onClick={handlePlayVoice} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          {/* آدمک SVG */}
-          <svg width="30" height="30" viewBox="0 0 100 100">
-            {/* سر آدمک */}
-            <circle cx="50" cy="50" r="40" fill="#f4c542" stroke="#333" strokeWidth="2"/>
-            {/* چشم‌ها */}
-            <circle cx="35" cy="40" r="5" fill="#000"/>
-            <circle cx="65" cy="40" r="5" fill="#000"/>
-            {/* دهان */}
-            <rect
-              x="35"
-              y={isSpeaking ? "60" : "65"}   // حرکت دهان بالا و پایین
-              width="30"
-              height={isSpeaking ? "10" : "5"}
-              fill="#900"
-              rx="2"
-            />
-          </svg>
-          {weText}
-        </button>  
-        <br />
+        {/* نام روند */}
+        <div className='row mb-2'>
+          <div className='col text-center'>
+          {trend && (
+            <p className='text-danger'>
+              {trend.trendType === 1 ? "مرور" : trend.trendType === 2 ? "آزمون" : "تمرین"}
+            </p>
+          )}
+            <p className='text-white text-center'>
+              {trend ? trend.name : "در حال بارگذاری..."}
+            </p>
+          </div>
+        </div>
+        <div className='row mb-2'>
+          <div className='col text-center'>
+            {/* دکمه شروع یادگیری با آدمک */}
+            <button
+  className="btn text-white me-2 mt-2"
+  onClick={handleStartLearning} // اجرای کل روند از اینجا
+  disabled={isRunning || !trend} // غیر فعال وقتی در حال اجرا یا trend لود نشده
+  style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
+>
+  <svg width="30" height="30" viewBox="0 0 100 100">
+    {/* سر آدمک */}
+    <circle cx="50" cy="50" r="40" fill="#f4c542" stroke="#333" strokeWidth="2"/>
+    {/* چشم‌ها */}
+    <circle cx="35" cy="40" r="5" fill="#000"/>
+    <circle cx="65" cy="40" r="5" fill="#000"/>
+    {/* دهان */}
+    <rect
+      x="35"
+      y={isSpeaking ? "60" : "65"}   // حرکت دهان بالا و پایین
+      width="30"
+      height={isSpeaking ? "10" : "5"}
+      fill="#900"
+      rx="2"
+    />
+  </svg>
+  <span style={{ marginLeft: 8 }}>
+    {isRunning ? "در حال یادگیری..." : "شروع"}
+  </span>
+            </button>
 
-        {/* کامپوننت شرطی */}
-        {/* چون برای صفحۀ مرور باید بعضی چیزها نمایش داده بشوند */}
-        {pageName!="moror" ? "You: " : ""}
-      You:  
-        <span>{youText}</span>
-        <button className="btn text-white my-2" onClick={() => handleSpeakYou(youText)}>
-          ▶
-        </button>
-        <br/>
-        <button className="btn btn-secondary mt-2" onClick={handleNextSentence}>
-          Next Sentence
-        </button>
-        <div>
-      </div>
+          </div>
+        </div>
 
+          <div className='row mb-2'>
+            <div className='col text-center'>
+              {/* نمایش جمله فعلی */}
+              <p style={{ marginTop: 12, fontSize: 18 }}>
+                {youText}
+              </p>
+            </div>
+          </div>
       <div style={{ marginTop: '10px' }}>
         {pageName!="moror" ? 
         <button className="btn text-white" onClick={handleStartRecording} disabled={isRecording}>
